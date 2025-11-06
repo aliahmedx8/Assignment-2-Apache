@@ -1,0 +1,6 @@
+<html><head><title>Upload File</title></head>
+<body><h2>Upload a File</h2>
+<form action="upload" method="post" enctype="multipart/form-data">
+<input type="file" name="file" required><br><br>
+<input type="submit" value="Upload">
+</form></body></html>
