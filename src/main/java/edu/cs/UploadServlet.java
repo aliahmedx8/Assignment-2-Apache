@@ -1,37 +1,58 @@
 package edu.cs;
-import java.io.*;
-import java.sql.*;
-import jakarta.servlet.*;
-import jakarta.servlet.annotation.*;
-import jakarta.servlet.http.*;
-@MultipartConfig(maxFileSize = 500 * 1024 * 1024)
+
+import jakarta.servlet.ServletException;
+import jakarta.servlet.annotation.MultipartConfig;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.Part;
+import java.io.IOException;
+import java.io.InputStream;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+
+@MultipartConfig(
+    fileSizeThreshold = 1024 * 1024,
+    maxFileSize = 500L * 1024 * 1024,
+    maxRequestSize = 510L * 1024 * 1024
+)
 public class UploadServlet extends HttpServlet {
-    protected void doPost(HttpServletRequest request, HttpServletResponse response)
+    @Override
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
-        Part filePart = request.getPart("file");
-        String fileName = filePart.getSubmittedFileName();
-        long fileSize = filePart.getSize();
-        response.setContentType("text/html");
-        PrintWriter out = response.getWriter();
-        if (fileSize == 0) {
-            out.println("<h3 style='color:red;'>❌ Upload failed: File is empty!</h3>");
+
+        Part file = req.getPart("file");
+        if (file == null || file.getSize() <= 0) {
+            req.setAttribute("msg", "Upload failed: empty file is not allowed.");
+            req.getRequestDispatcher("/upload.jsp").forward(req, resp);
             return;
         }
-        if (fileSize > 500L * 1024 * 1024) {
-            out.println("<h3 style='color:red;'>❌ Upload failed: File exceeds 500MB limit!</h3>");
+
+        if (file.getSize() > 500L * 1024 * 1024) {
+            req.setAttribute("msg", "Upload failed: file exceeds 500MB limit.");
+            req.getRequestDispatcher("/upload.jsp").forward(req, resp);
             return;
         }
-        try (Connection conn = DBUtil.getConnection();
-             InputStream inputStream = filePart.getInputStream();
-             PreparedStatement ps = conn.prepareStatement("INSERT INTO files(filename, filedata, filesize) VALUES (?, ?, ?)")) {
-            ps.setString(1, fileName);
-            ps.setBlob(2, inputStream);
-            ps.setLong(3, fileSize);
+
+        String filename = file.getSubmittedFileName();
+        try (InputStream in = file.getInputStream();
+             Connection con = DBUtil.getConnection();
+             PreparedStatement ps = con.prepareStatement(
+                     "INSERT INTO files(filename,filedata,filesize) VALUES(?,?,?)")) {
+            ps.setString(1, filename);
+            ps.setBlob(2, in);
+            ps.setLong(3, file.getSize());
             ps.executeUpdate();
-            out.println("<h3 style='color:green;'>✅ File uploaded successfully: " + fileName + "</h3>");
-            out.println("<a href='download.jsp'>Go to Download Page</a>");
         } catch (Exception e) {
-            e.printStackTrace(out);
+            throw new ServletException(e);
         }
+        resp.sendRedirect(req.getContextPath() + "/download.jsp");
+    }
+
+    @Override
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+            throws ServletException, IOException {
+        req.getRequestDispatcher("/upload.jsp").forward(req, resp);
     }
 }
+

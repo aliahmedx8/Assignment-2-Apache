@@ -1,28 +1,50 @@
 package edu.cs;
-import java.io.*;
-import java.sql.*;
-import jakarta.servlet.*;
-import jakarta.servlet.http.*;
+
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+
 public class DownloadServlet extends HttpServlet {
-    protected void doGet(HttpServletRequest request, HttpServletResponse response)
+    @Override
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
-        String fileId = request.getParameter("id");
-        try (Connection conn = DBUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT filename, filedata FROM files WHERE id=?")) {
-            ps.setInt(1, Integer.parseInt(fileId));
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) {
-                String fileName = rs.getString("filename");
-                InputStream fileData = rs.getBinaryStream("filedata");
-                response.setHeader("Content-Disposition", "attachment; filename="" + fileName + """);
-                OutputStream out = response.getOutputStream();
-                fileData.transferTo(out);
-                out.close();
-            } else {
-                response.getWriter().println("<h3>❌ File not found!</h3>");
+
+        String idStr = req.getParameter("id");
+        if (idStr == null) {
+            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Missing id");
+            return;
+        }
+
+        try (Connection con = DBUtil.getConnection();
+             PreparedStatement ps = con.prepareStatement(
+                     "SELECT filename,filedata FROM files WHERE id=?")) {
+            ps.setInt(1, Integer.parseInt(idStr));
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    resp.sendError(HttpServletResponse.SC_NOT_FOUND, "File not found");
+                    return;
+                }
+                String filename = rs.getString("filename");
+                try (var is = rs.getBinaryStream("filedata");
+                     OutputStream os = resp.getOutputStream()) {
+                    resp.setContentType("application/octet-stream");
+                    resp.setHeader("Content-Disposition",
+                        "attachment; filename=\"" + filename.replace("\"", "") + "\"");
+                    byte[] buf = new byte[8192];
+                    int len;
+                    while ((len = is.read(buf)) != -1) os.write(buf, 0, len);
+                    os.flush();
+                }
             }
         } catch (Exception e) {
-            e.printStackTrace(response.getWriter());
+            throw new ServletException(e);
         }
     }
 }
+
